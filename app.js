@@ -1,16 +1,16 @@
 /* ============================================
-   APP — shouldibreakup.com
+   APP - shouldibreakup.lol
    Quiz engine + Claude API verdict.
    ============================================ */
 
 (function () {
   "use strict";
 
-  // ── State ──────────────────────────────────────
+  // -- State --
   var currentStep = 0;
-  var answers = {};   // { stepId: [optionId, ...] }
+  var answers = {};
 
-  // ── DOM refs ───────────────────────────────────
+  // -- DOM refs --
   var sectionIntro   = document.getElementById("sectionIntro");
   var sectionQuiz    = document.getElementById("sectionQuiz");
   var sectionLoading = document.getElementById("sectionLoading");
@@ -22,7 +22,7 @@
   var btnNext        = document.getElementById("btnNext");
   var toast          = document.getElementById("toast");
 
-  // ── Utility ────────────────────────────────────
+  // -- Utility --
   function showSection(id) {
     [sectionIntro, sectionQuiz, sectionLoading, sectionResult].forEach(function (s) {
       if (s) s.classList.add("hidden");
@@ -38,8 +38,9 @@
     setTimeout(function () { toast.classList.remove("visible"); }, 3200);
   }
 
-  // ── Build quiz steps into DOM ──────────────────
+  // -- Build quiz steps into DOM --
   function buildQuiz() {
+    if (!quizSteps) return;
     quizSteps.innerHTML = "";
     QUIZ_STEPS.forEach(function (step, i) {
       var div = document.createElement("div");
@@ -80,12 +81,11 @@
     });
   }
 
-  // ── Toggle option selection ────────────────────
+  // -- Toggle option --
   function toggleOption(step, stepIndex, optId, btn) {
     if (!answers[step.id]) answers[step.id] = [];
 
     if (step.multi) {
-      // Multi-select: toggle
       var idx = answers[step.id].indexOf(optId);
       if (idx === -1) {
         answers[step.id].push(optId);
@@ -95,7 +95,6 @@
         btn.classList.remove("selected");
       }
     } else {
-      // Single-select: deselect others first
       var grid = btn.closest(".options-grid");
       grid.querySelectorAll(".option-card").forEach(function (c) {
         c.classList.remove("selected");
@@ -107,47 +106,45 @@
     validateStep(stepIndex);
   }
 
-  // ── Validate current step has answer ──────────
+  // -- Validate step --
   function validateStep(stepIndex) {
     var step = QUIZ_STEPS[stepIndex];
     var hasAnswer = answers[step.id] && answers[step.id].length > 0;
-    btnNext.disabled = !hasAnswer;
+    if (btnNext) btnNext.disabled = !hasAnswer;
   }
 
-  // ── Show step by index ─────────────────────────
+  // -- Show step --
   function showStep(index) {
-    // Hide all steps
     document.querySelectorAll(".quiz-step").forEach(function (el) {
       el.classList.add("hidden");
     });
 
     var stepEl = document.getElementById("step-" + index);
-    if (stepEl) stepEl.classList.remove("hidden");
+    if (!stepEl) return;
+    stepEl.classList.remove("hidden");
 
-    // Restore selections if navigating back
     var step = QUIZ_STEPS[index];
     var stepAnswers = answers[step.id] || [];
     stepEl.querySelectorAll(".option-card").forEach(function (btn) {
       btn.classList.toggle("selected", stepAnswers.indexOf(btn.dataset.optId) !== -1);
     });
 
-    // Update progress
-    var pct = Math.round(((index) / QUIZ_STEPS.length) * 100);
-    progressFill.style.width = pct + "%";
-    stepLabel.textContent = "Step " + (index + 1) + " of " + QUIZ_STEPS.length;
+    var pct = Math.round((index / QUIZ_STEPS.length) * 100);
+    if (progressFill) progressFill.style.width = pct + "%";
+    if (stepLabel) stepLabel.textContent = "Step " + (index + 1) + " of " + QUIZ_STEPS.length;
 
-    // Back button
-    btnBack.style.visibility = index === 0 ? "hidden" : "visible";
+    if (btnBack) btnBack.style.visibility = index === 0 ? "hidden" : "visible";
 
-    // Next button
     var isLast = index === QUIZ_STEPS.length - 1;
-    btnNext.textContent = isLast ? "Get my answer →" : "Next →";
-    validateStep(index);
+    if (btnNext) {
+      btnNext.textContent = isLast ? "get my answer ->" : "next ->";
+      validateStep(index);
+    }
 
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  // ── Build prompt from answers ──────────────────
+  // -- Build prompt --
   function buildPrompt() {
     var lines = ["Here is someone's situation, described by selecting from a series of honest prompts:\n"];
 
@@ -167,15 +164,15 @@
     return lines.join("\n");
   }
 
-  // ── Claude API ─────────────────────────────────
+  // -- Claude API --
   function askClaude(prompt) {
     var systemPrompt = [
-      "You are a brutally honest best friend — warm but unflinching. Someone has answered a series of questions about their relationship. Each answer is tagged with a signal: 'leave', 'stay', 'complicated', or 'neutral'.",
+      "You are a brutally honest best friend - warm but unflinching. Someone has answered a series of questions about their relationship. Each answer is tagged with a signal: 'leave', 'stay', 'complicated', or 'neutral'.",
       "",
       "Your job: read the full picture, weigh the signals, and give a verdict of exactly one of these:",
-      "LEAVE — they should end the relationship",
-      "STAY — the relationship is worth continuing",
-      "COMPLICATED — genuinely not clear-cut",
+      "LEAVE - they should end the relationship",
+      "STAY - the relationship is worth continuing",
+      "COMPLICATED - genuinely not clear-cut",
       "",
       "You MUST respond in valid JSON only. No markdown, no preamble. Exactly this structure:",
       "{",
@@ -203,7 +200,10 @@
         messages: [{ role: "user", content: prompt }]
       })
     })
-    .then(function (r) { return r.json(); })
+    .then(function (r) {
+      if (!r.ok) throw new Error("API error: " + r.status);
+      return r.json();
+    })
     .then(function (data) {
       var text = "";
       (data.content || []).forEach(function (block) {
@@ -214,7 +214,7 @@
     });
   }
 
-  // ── Render result ──────────────────────────────
+  // -- Render result --
   function renderResult(result) {
     var verdict = (result.verdict || "COMPLICATED").toUpperCase();
     var reason  = result.reason  || "";
@@ -226,35 +226,49 @@
     var lines = verdict === "COMPLICATED" ? ["IT'S", "COMPLI-", "CATED."] : verdict === "LEAVE" ? ["LEAVE."] : ["STAY."];
 
     var verdictEl = document.getElementById("verdictBlock");
-    verdictEl.className = "verdict-block " + cls;
-    verdictEl.innerHTML = lines.map(function (l) { return "<span>" + l + "</span>"; }).join("");
+    if (verdictEl) {
+      verdictEl.className = "verdict-block " + cls;
+      verdictEl.innerHTML = lines.map(function (l) { return "<span>" + l + "</span>"; }).join("");
+    }
 
     var card = document.getElementById("shareCard");
     if (card) card.style.setProperty("--verdict-color", color);
 
-    document.getElementById("verdictReason").textContent = reason;
+    var reasonEl = document.getElementById("verdictReason");
+    if (reasonEl) reasonEl.textContent = reason;
 
     var detailEl = document.getElementById("verdictDetail");
-    var paras = detail.split(/\n\n|\n/).filter(function (p) { return p.trim(); });
-    detailEl.innerHTML = paras.map(function (p) { return "<p>" + p + "</p>"; }).join("");
+    if (detailEl) {
+      var paras = detail.split(/\n\n|\n/).filter(function (p) { return p.trim(); });
+      detailEl.innerHTML = paras.map(function (p) { return "<p>" + p + "</p>"; }).join("");
+    }
 
-    document.getElementById("verdictClosing").textContent = closing;
+    var closingEl = document.getElementById("verdictClosing");
+    if (closingEl) closingEl.textContent = closing;
 
     wireShareButtons(verdict, closing);
     showSection("sectionResult");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  // ── Render error ───────────────────────────────
+  // -- Render error --
   function renderError() {
-    document.getElementById("verdictBlock").innerHTML = '<span class="error-state">Something went wrong.</span>';
-    document.getElementById("verdictReason").textContent = "";
-    document.getElementById("verdictDetail").innerHTML = '<p class="error-sub">Couldn\'t get an answer. Check your connection and try again.</p>';
-    document.getElementById("verdictClosing").textContent = "";
+    var verdictEl = document.getElementById("verdictBlock");
+    if (verdictEl) verdictEl.innerHTML = '<span class="error-state">something went wrong.</span>';
+
+    var reasonEl = document.getElementById("verdictReason");
+    if (reasonEl) reasonEl.textContent = "";
+
+    var detailEl = document.getElementById("verdictDetail");
+    if (detailEl) detailEl.innerHTML = '<p class="error-sub">couldn\'t get an answer. check your connection and try again.</p>';
+
+    var closingEl = document.getElementById("verdictClosing");
+    if (closingEl) closingEl.textContent = "";
+
     showSection("sectionResult");
   }
 
-  // ── Loading animation ──────────────────────────
+  // -- Loading animation --
   function startLoadingAnimation() {
     var pair = LOADING_MESSAGES[Math.floor(Math.random() * LOADING_MESSAGES.length)];
     var l1 = document.getElementById("loadingLine1");
@@ -262,11 +276,11 @@
     if (l1) l1.textContent = pair[0];
     if (l2) {
       l2.textContent = "";
-      setTimeout(function () { l2.textContent = pair[1]; }, 900);
+      setTimeout(function () { if (l2) l2.textContent = pair[1]; }, 900);
     }
   }
 
-  // ── Submit quiz ────────────────────────────────
+  // -- Submit quiz --
   function submitQuiz() {
     var prompt = buildPrompt();
     showSection("sectionLoading");
@@ -276,19 +290,19 @@
     askClaude(prompt)
       .then(renderResult)
       .catch(function (err) {
-        console.error(err);
+        console.error("Claude API error:", err);
         renderError();
       });
   }
 
-  // ── Share buttons ──────────────────────────────
+  // -- Share buttons --
   function wireShareButtons(verdict, closing) {
     var emoji = verdict === "LEAVE" ? "🚩" : verdict === "STAY" ? "💚" : "🤔";
     var shareText =
-      emoji + " I just took the should I break up quiz.\n\n" +
-      "Verdict: " + verdict + "\n\n" +
+      emoji + " i just took the should i break up quiz.\n\n" +
+      "verdict: " + verdict + "\n\n" +
       '"' + closing + '"\n\n' +
-      "shouldibreakup.com";
+      "shouldibreakup.lol";
 
     var wa = document.getElementById("btnWhatsapp");
     var tw = document.getElementById("btnTwitter");
@@ -303,24 +317,24 @@
     if (im) im.onclick = saveAsImage;
   }
 
-  // ── Save as image ──────────────────────────────
+  // -- Save as image --
   function saveAsImage() {
     var card = document.getElementById("shareCard");
-    if (!card) { showToast("Nothing to save yet."); return; }
-    if (typeof html2canvas === "undefined") { showToast("Image export loading — try in a moment."); return; }
-    showToast("Generating image…");
+    if (!card) { showToast("nothing to save yet."); return; }
+    if (typeof html2canvas === "undefined") { showToast("image export loading - try in a moment."); return; }
+    showToast("generating image...");
     html2canvas(card, { backgroundColor: null, scale: 2, useCORS: true, logging: false })
       .then(function (canvas) {
         var link = document.createElement("a");
         link.download = "shouldibreakup-" + Date.now() + ".png";
         link.href = canvas.toDataURL("image/png");
         link.click();
-        showToast("Saved! Go send it.");
+        showToast("saved. go send it.");
       })
-      .catch(function () { showToast("Couldn't generate — try screenshotting instead."); });
+      .catch(function () { showToast("couldn't generate - try screenshotting instead."); });
   }
 
-  // ── Init ───────────────────────────────────────
+  // -- Init --
   function init() {
     // Footer year
     var fy = document.getElementById("footerYear");
@@ -328,18 +342,19 @@
 
     // Theme
     var html = document.documentElement;
-    var saved = localStorage.getItem("sib_theme") || "light";
+    var saved = localStorage.getItem("sib_theme") || "dark";
     html.setAttribute("data-theme", saved);
+
     var themeBtn = document.getElementById("themeToggle");
     if (themeBtn) {
       themeBtn.onclick = function () {
-        var next = html.getAttribute("data-theme") === "light" ? "dark" : "light";
+        var next = html.getAttribute("data-theme") === "dark" ? "light" : "dark";
         html.setAttribute("data-theme", next);
         localStorage.setItem("sib_theme", next);
       };
     }
 
-    // Build quiz DOM
+    // Build quiz
     buildQuiz();
 
     // Start button
@@ -354,23 +369,27 @@
     }
 
     // Next button
-    btnNext.onclick = function () {
-      var isLast = currentStep === QUIZ_STEPS.length - 1;
-      if (isLast) {
-        submitQuiz();
-      } else {
-        currentStep++;
-        showStep(currentStep);
-      }
-    };
+    if (btnNext) {
+      btnNext.onclick = function () {
+        var isLast = currentStep === QUIZ_STEPS.length - 1;
+        if (isLast) {
+          submitQuiz();
+        } else {
+          currentStep++;
+          showStep(currentStep);
+        }
+      };
+    }
 
     // Back button
-    btnBack.onclick = function () {
-      if (currentStep > 0) {
-        currentStep--;
-        showStep(currentStep);
-      }
-    };
+    if (btnBack) {
+      btnBack.onclick = function () {
+        if (currentStep > 0) {
+          currentStep--;
+          showStep(currentStep);
+        }
+      };
+    }
 
     // Again button
     var againBtn = document.getElementById("btnAgain");
